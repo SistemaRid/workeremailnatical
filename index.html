@@ -36,7 +36,7 @@ const statusEl = document.getElementById("status");
 
 statusEl.innerText = "worker ativo";
 
-const EMAIL_API_URL = "https://script.google.com/macros/s/AKfycbxDOf5ZE13vJZ5K58Dq6zzLaGioAbp5yyFPnjdYlRrYSE0iiaJsX_XKb97zjuK04gL/exec";
+const EMAIL_API_URL = "https://script.google.com/macros/s/AKfycbxDOf5ZE13vJZ5K58Dq6zzLaGioAbp5yyFPnjdYI9LrYSE0iiaJsX_XKb97ZjuK04gL/exec";
 const EMAIL_API_KEY = "NATICAL_KEY_2026";
 
 
@@ -48,11 +48,9 @@ runWorker();
 setInterval(runWorker, 60000);
 
 async function sendEmail(to, subject, html) {
-  const resp = await fetch(EMAIL_API_URL, {
+  await fetch(EMAIL_API_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
+    mode: "no-cors",
     body: JSON.stringify({
       key: EMAIL_API_KEY,
       to,
@@ -60,11 +58,6 @@ async function sendEmail(to, subject, html) {
       html
     })
   });
-
-  const result = await resp.json();
-  if (!result.ok) {
-    throw new Error(result.error || "Erro ao enviar e-mail");
-  }
 }
 
 async function runWorker() {
@@ -110,7 +103,7 @@ if (!shouldSend) {
 
 
     // fallback
-    let toEmail = "naticalrids@gmail.com, cesar.costa@jdemito.com.br";
+    let toEmail = "naticalrids@gmail.com";
 
     // tenta buscar e-mail do líder (se existir)
     if (rid.responsibleLeader) {
