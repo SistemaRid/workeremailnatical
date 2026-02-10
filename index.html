@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Worker RID</title>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  
+</head>
+<body>
+
+<h2>Worker de E-mails RID</h2>
+<p>Status: <span id="status">inicializando…</span></p>
+
+<script>
+/* =========================
+   CONFIGURAÇÕES
+========================= */
+
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBVnWDyQXWNf9JFE3S5W_eDqmrp7B4_nTE",
+  authDomain: "natical-rids.firebaseapp.com",
+  projectId: "natical-rids",
+  storageBucket: "natical-rids.firebasestorage.app",
+  messagingSenderId: "954479408416",
+  appId: "1:954479408416:web:292797e541d84487021345"
+};
+
+
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.firestore();
+const statusEl = document.getElementById("status");
+
+statusEl.innerText = "worker ativo";
+
+const EMAIL_API_URL = "https://script.google.com/macros/s/AKfycbxDOf5ZE13vJZ5K58Dq6zzLaGioAbp5yyFPnjdYlRrYSE0iiaJsX_XKb97zjuK04gL/exec";
+const EMAIL_API_KEY = "NATICAL_KEY_2026";
+
+
+/* =========================
+   EXECUÇÃO
+========================= */
+
+runWorker();
+setInterval(runWorker, 60000);
+
+async function sendEmail(to, subject, html) {
+  const resp = await fetch(EMAIL_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify({
+      key: EMAIL_API_KEY,
+      to,
+      subject,
+      html
+    })
+  });
+
+  const result = await resp.json();
+  if (!result.ok) {
+    throw new Error(result.error || "Erro ao enviar e-mail");
+  }
+}
+
+async function runWorker() {
+  console.log("🔁 Worker executando");
+
+  try {
+    const snapshot = await db
+  .collection("rids")
+  .where("emailSent", "==", false)
+  .where("status", "in", ["VENCIDO", "CORRIGIDO"])
+  .orderBy("createdAt")
+  .limit(1)
+  .get();
+
+    if (snapshot.empty) {
+      console.log("📭 Nenhuma RID pendente");
+      return;
+    }
+
+    const doc = snapshot.docs[0];
+    const rid = doc.data();
+
+    let shouldSend = false;
+
+// 1️⃣ RID sem líder → envia fallback UMA VEZ
+if (!rid.responsibleLeader && !rid.lastNotifiedLeader) {
+  shouldSend = true;
+}
+
+// 2️⃣ RID com líder novo ou trocado
+if (
+  rid.responsibleLeader &&
+  rid.responsibleLeader !== rid.lastNotifiedLeader
+) {
+  shouldSend = true;
+}
+
+if (!shouldSend) {
+  console.log("ℹ️ Nenhum envio necessário para RID", rid.ridNumber);
+  return;
+}
+
+
+
+    // fallback
+    let toEmail = "naticalrids@gmail.com, cesar.costa@jdemito.com.br";
+
+    // tenta buscar e-mail do líder (se existir)
+    if (rid.responsibleLeader) {
+      const leaderSnap = await db
+        .collection("leaders_public")
+        .doc(rid.responsibleLeader)
+        .get();
+
+      if (leaderSnap.exists && leaderSnap.data().email) {
+        toEmail = leaderSnap.data().email;
+      }
+    }
+
+    console.log("📩 Enviando e-mail RID:", rid.ridNumber, "→", toEmail);
+
+   await sendEmail(
+  toEmail,
+  `Novo RID emitido – ${String(rid.ridNumber).padStart(5, "0")}`,
+  `
+    <h2>Novo RID emitido</h2>
+
+    <p><b>Número do RID:</b> ${String(rid.ridNumber).padStart(5, "0")}</p>
+    <p><b>Emitente:</b> ${rid.emitterName || "Não informado"}</p>
+    <p><b>Setor:</b> ${rid.sector || "-"}</p>
+    <p><b>Classificação de risco:</b> ${rid.riskClassification || "-"}</p>
+    <p><b>Status do RID:</b> ${rid.status}</p>
+
+    <hr>
+
+    <p><b>Descrição:</b></p>
+    <p>${rid.description || "-"}</p>
+
+    <p style="margin-top:16px;">
+      <a
+        href="https://sistemarid.github.io/Natical-RIDs/"
+        style="
+          display:inline-block;
+          background:#2563eb;
+          color:#ffffff;
+          padding:10px 16px;
+          border-radius:6px;
+          text-decoration:none;
+          font-weight:600;
+        "
+      >
+         Visualizar RID
+      </a>
+    </p>
+
+    <hr>
+
+    <p style="font-size:12px;color:#666;">
+      Este é um e-mail automático. Por favor, não responda a esta mensagem.
+    </p>
+  `
+);
+
+
+// 🔥 MARCA QUEM JÁ FOI NOTIFICADO
+await db.collection("rids").doc(doc.id).update({
+  emailSent: true,
+  emailSentAt: new Date(),
+  lastNotifiedLeader: rid.responsibleLeader || "FALLBACK"
+});
+
+console.log("✅ E-mail enviado com sucesso:", rid.ridNumber);
+
+
+  } catch (err) {
+    console.error("❌ Erro no worker:", err);
+  }
+}
+</script>
+
+</body>
+</html>
